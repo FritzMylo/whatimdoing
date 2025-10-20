@@ -1039,7 +1039,14 @@ function generatePrecipitation() {
     }
 
     let angleDeg = tier != null ? options.winds[tier] : nextToAngle(next);
-    const a = ((angleDeg + 90) * Math.PI) / 180;
+    let a;
+    if (tier != null) {
+      // угол из options.winds — конвертируем систему азимутов Azgaar -> экран
+      a = ((angleDeg + 90) * Math.PI) / 180;
+    } else {
+      // угол из nextToAngle — уже в экранной системе (0°=восток, 90°=вниз)
+      a = (angleDeg * Math.PI) / 180;
+    };
 
     let dx = Math.cos(a);
     let dy = Math.sin(a);
