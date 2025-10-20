@@ -1039,7 +1039,7 @@ function generatePrecipitation() {
     }
 
     let angleDeg = tier != null ? options.winds[tier] : nextToAngle(next);
-    const a = (angleDeg * Math.PI) / 180;
+    const a = ((angleDeg + 90) * Math.PI) / 180;
 
     let dx = Math.cos(a);
     let dy = Math.sin(a);
