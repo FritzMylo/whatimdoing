@@ -1014,95 +1014,44 @@ function generatePrecipitation() {
     return {isWest, isEast, isNorth, isSouth};
   }
 
-  function passWind(source, maxPrecInit, next, steps) {
-  function nextToAngle(next) {
-    if (next === 1) return 0;              // восток
-    if (next === -1) return 180;           // запад
-    if (next === cellsX) return 90;        // юг (вниз по Y)
-    if (next === -cellsX) return 270;      // север (вверх по Y)
-    return 0;
-  }
+  function passWind(source, maxPrec, next, steps) {
+    const maxPrecInit = maxPrec;
 
- const maxSteps = Math.max(steps || 0, 1);
-
-  for (let first of source) {
-    let start, latMod = 1, tier = null;
-    if (Array.isArray(first)) {
-      start = first[0];
-      latMod = first[1] || 1;
-      tier = first[2] ?? null;
-    } else {
-      start = first;
-    }
-
-    let angleDeg = tier != null ? options.winds[tier] : nextToAngle(next);
-    let a;
-    if (tier != null) {
-      // угол из options.winds — конвертируем систему азимутов Azgaar -> экран
-      a = ((angleDeg + 90) * Math.PI) / 180;
-    } else {
-      // угол из nextToAngle — уже в экранной системе (0°=восток, 90°=вниз)
-      a = (angleDeg * Math.PI) / 180;
-    };
-
-    let dx = Math.cos(a);
-    let dy = Math.sin(a);
-    const stepScale = 1 / Math.max(Math.abs(dx), Math.abs(dy), 1e-6); // чтобы гарантированно переходить в соседнюю клетку
-    dx *= stepScale;
-    dy *= stepScale;
-
-    const maxPrec = Math.min(maxPrecInit * latMod, 255);
-
-    let x = start % cellsX;
-    let y = (start / cellsX) | 0;
-
-    let humidity = maxPrec - cells.h[start];
-    if (humidity <= 0) continue;
-
-    let lastIndex = -1;
-
-    for (let s = 0; s < maxSteps; s++) {
-      if (x < 0 || x >= cellsX || y < 0 || y >= cellsY) break;
-
-      const i = (y | 0) * cellsX + (x | 0);
-      if (i === lastIndex) { x += dx; y += dy; continue; } // не жуем одну клетку дважды
-      lastIndex = i;
-
-      if (cells.temp[i] < -5) { x += dx; y += dy; continue; } // пермафрост — пропускаем
-
-      const nx = x + dx, ny = y + dy;
-      if (nx < 0 || nx >= cellsX || ny < 0 || ny >= cellsY) break;
-      const j = (ny | 0) * cellsX + (nx | 0);
-
-      if (cells.h[i] < 20) {
-        if (cells.h[j] >= 20) {
-          cells.prec[j] += Math.max(humidity / rand(10, 20), 1); // береговые осадки
-        } else {
-          humidity = Math.min(humidity + 5 * modifier, maxPrec); // пополнение над водой
-          cells.prec[i] += 5 * modifier;
-        }
-        x = nx; y = ny;
-        continue;
+    for (let first of source) {
+      if (first[0]) {
+        maxPrec = Math.min(maxPrecInit * first[1], 255);
+        first = first[0];
       }
 
-      const isPassable = cells.h[j] <= MAX_PASSABLE_ELEVATION;
-      const nIdx = j - i;
-      const precipitation = isPassable ? getPrecipitation(humidity, i, nIdx) : humidity;
-      cells.prec[i] += precipitation;
+      let humidity = maxPrec - cells.h[first]; // initial water amount
+      if (humidity <= 0) continue; // if first cell in row is too elevated consider wind dry
 
-      const evaporation = precipitation > 1.5 ? 1 : 0;
-      humidity = isPassable ? minmax(humidity - precipitation + evaporation, 0, maxPrec) : 0;
+      for (let s = 0, current = first; s < steps; s++, current += next) {
+        if (cells.temp[current] < -5) continue; // no flux in permafrost
 
-      if (humidity <= 0.01) break;
+        if (cells.h[current] < 20) {
+          // water cell
+          if (cells.h[current + next] >= 20) {
+            cells.prec[current + next] += Math.max(humidity / rand(10, 20), 1); // coastal precipitation
+          } else {
+            humidity = Math.min(humidity + 5 * modifier, maxPrec); // wind gets more humidity passing water cell
+            cells.prec[current] += 5 * modifier; // water cells precipitation (need to correctly pour water through lakes)
+          }
+          continue;
+        }
 
-      x = nx; y = ny;
+        // land cell
+        const isPassable = cells.h[current + next] <= MAX_PASSABLE_ELEVATION;
+        const precipitation = isPassable ? getPrecipitation(humidity, current, next) : humidity;
+        cells.prec[current] += precipitation;
+        const evaporation = precipitation > 1.5 ? 1 : 0; // some humidity evaporates back to the atmosphere
+        humidity = isPassable ? minmax(humidity - precipitation + evaporation, 0, maxPrec) : 0;
+      }
     }
   }
-}
-
 
   function getPrecipitation(humidity, i, n) {
-    const normalLoss = Math.max(humidity / (14 * modifier), 1); // precipitation in normal conditions
+    const normalLoss = Math.max(humidity / (10 * modifier), 1); // precipitation in normal conditions
     const diff = Math.max(cells.h[i + n] - cells.h[i], 0); // difference in height
     const mod = (cells.h[i + n] / 70) ** 2; // 50 stands for hills, 70 for mountains
     return minmax(normalLoss + diff * mod, 1, humidity);
