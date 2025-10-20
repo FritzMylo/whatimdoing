@@ -1023,10 +1023,7 @@ function generatePrecipitation() {
     return 0;
   }
 
-  const maxSteps = Math.min(
-    Math.ceil(Math.hypot(cellsX, cellsY)) + 2,
-    Math.max(steps || 0, 1) * 2
-  );
+ const maxSteps = Math.max(steps || 0, 1);
 
   for (let first of source) {
     let start, latMod = 1, tier = null;
@@ -1105,7 +1102,7 @@ function generatePrecipitation() {
 
 
   function getPrecipitation(humidity, i, n) {
-    const normalLoss = Math.max(humidity / (10 * modifier), 1); // precipitation in normal conditions
+    const normalLoss = Math.max(humidity / (14 * modifier), 1); // precipitation in normal conditions
     const diff = Math.max(cells.h[i + n] - cells.h[i], 0); // difference in height
     const mod = (cells.h[i + n] / 70) ** 2; // 50 stands for hills, 70 for mountains
     return minmax(normalLoss + diff * mod, 1, humidity);
