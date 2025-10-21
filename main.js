@@ -875,7 +875,41 @@ function defineMapSize() {
     return [gauss(30, 20, 15, max), lat(), 50]; // Continents, Archipelago, High Island, Low Island
   }
 }
+function passWind(source, maxPrec, next, steps) {
+  const maxPrecInit = maxPrec;
 
+  for (let first of source) {
+    if (first[0]) {
+      maxPrec = Math.min(maxPrecInit * first[1], 255);
+      first = first[0];
+    }
+
+    let humidity = maxPrec - cells.h[first];
+    if (humidity <= 0) continue;
+
+    for (let s = 0, current = first; s < steps; s++, current += next) {
+      if (cells.temp[current] < -5) continue;
+
+      if (cells.h[current] < 20) {
+        // ... твой код для воды
+        continue;
+      }
+
+      // ДОБАВЬ ЭТО - диффузия влаги в соседние ячейки
+      const neighbors = cells.c[current];
+      neighbors.forEach(n => {
+        if (cells.h[n] >= 20 && cells.temp[n] >= -5) {
+          const diffusion = humidity * 0.1; // 10% влаги распространяется
+          cells.prec[n] += diffusion;
+        }
+      });
+
+      // дальше твой код
+      const isPassable = cells.h[current + next] <= MAX_PASSABLE_ELEVATION;
+      // ...
+    }
+  }
+}
 // calculate map position on globe
 function calculateMapCoordinates() {
   const sizeFraction = +byId("mapSizeOutput").value / 100;
@@ -938,7 +972,29 @@ function calculateTemperatures() {
     const height = Math.pow(h - 18, exponent);
     return rn((height / 1000) * 6.5);
   }
-
+  for (let iteration = 0; iteration < 3; iteration++) {
+  const newPrec = new Uint8Array(cells.prec.length);
+  
+  for (let i = 0; i < cells.i.length; i++) {
+    if (cells.h[i] < 20) {
+      newPrec[i] = cells.prec[i];
+      continue;
+    }
+    
+    const neighbors = cells.c[i];
+    let sum = cells.prec[i] * 0.5; // текущая ячейка весит 50%
+    let count = 0.5;
+    
+    neighbors.forEach(n => {
+      sum += cells.prec[n] * 0.1; // соседи весят по 10%
+      count += 0.1;
+    });
+    
+    newPrec[i] = Math.round(sum / count);
+  }
+  
+  cells.prec = newPrec;
+}
   TIME && console.timeEnd("calculateTemperatures");
 }
 
