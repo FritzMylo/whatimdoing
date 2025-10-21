@@ -1072,6 +1072,7 @@ function generatePrecipitation() {
 
   function passWind(source, maxPrec, next, steps) {
   const maxPrecInit = maxPrec;
+  const perpendicular = next === 1 || next === -1 ? cellsX : 1; // перпендикуляр к направлению ветра
 
   for (let first of source) {
     if (first[0]) {
@@ -1085,9 +1086,16 @@ function generatePrecipitation() {
     for (let s = 0, current = first; s < steps; s++, current += next) {
       if (cells.temp[current] < -5) continue;
 
+      // ДОБАВЬ СЛУЧАЙНОЕ ОТКЛОНЕНИЕ ВЕТРА (снизит полосатость)
+      if (s > 0 && P(0.15)) { // 15% шанс отклонения
+        const deviation = P(0.5) ? perpendicular : -perpendicular;
+        if (current + deviation >= 0 && current + deviation < cells.i.length) {
+          current += deviation;
+        }
+      }
+
       if (cells.h[current] < 20) {
         if (cells.h[current + next] >= 20) {
-          // УБЕРИ ДИФФУЗИЮ ОТСЮДА - она делает болото
           cells.prec[current + next] += Math.max(humidity / rand(10, 20), 1);
         } else {
           humidity = Math.min(humidity + 5 * modifier, maxPrec);
@@ -1096,27 +1104,14 @@ function generatePrecipitation() {
         continue;
       }
 
-      // land cell
       const isPassable = cells.h[current + next] <= MAX_PASSABLE_ELEVATION;
       const precipitation = isPassable ? getPrecipitation(humidity, current, next) : humidity;
       cells.prec[current] += precipitation;
-      
-      // ДОБАВЬ ДИФФУЗИЮ ТОЛЬКО ДЛЯ СУШИ, и только немного
-      const neighbors = cells.c[current];
-      const lateralSpread = precipitation * 0.05; // всего 5% расползается в стороны
-      neighbors.forEach(n => {
-        // проверяем что это суша, не слишком высоко, и не слишком холодно
-        if (cells.h[n] >= 20 && cells.h[n] < 70 && cells.temp[n] >= -5) {
-          cells.prec[n] += lateralSpread / neighbors.length;
-        }
-      });
-      
       const evaporation = precipitation > 1.5 ? 1 : 0;
       humidity = isPassable ? minmax(humidity - precipitation + evaporation, 0, maxPrec) : 0;
     }
   }
 }
-
   function getPrecipitation(humidity, i, n) {
     const normalLoss = Math.max(humidity / (10 * modifier), 1); // precipitation in normal conditions
     const diff = Math.max(cells.h[i + n] - cells.h[i], 0); // difference in height
