@@ -1071,40 +1071,51 @@ function generatePrecipitation() {
   }
 
   function passWind(source, maxPrec, next, steps) {
-    const maxPrecInit = maxPrec;
+  const maxPrecInit = maxPrec;
 
-    for (let first of source) {
-      if (first[0]) {
-        maxPrec = Math.min(maxPrecInit * first[1], 255);
-        first = first[0];
-      }
+  for (let first of source) {
+    if (first[0]) {
+      maxPrec = Math.min(maxPrecInit * first[1], 255);
+      first = first[0];
+    }
 
-      let humidity = maxPrec - cells.h[first]; // initial water amount
-      if (humidity <= 0) continue; // if first cell in row is too elevated consider wind dry
+    let humidity = maxPrec - cells.h[first];
+    if (humidity <= 0) continue;
 
-      for (let s = 0, current = first; s < steps; s++, current += next) {
-        if (cells.temp[current] < -5) continue; // no flux in permafrost
+    for (let s = 0, current = first; s < steps; s++, current += next) {
+      if (cells.temp[current] < -5) continue;
 
-        if (cells.h[current] < 20) {
-          // water cell
-          if (cells.h[current + next] >= 20) {
-            cells.prec[current + next] += Math.max(humidity / rand(10, 20), 1); // coastal precipitation
-          } else {
-            humidity = Math.min(humidity + 5 * modifier, maxPrec); // wind gets more humidity passing water cell
-            cells.prec[current] += 5 * modifier; // water cells precipitation (need to correctly pour water through lakes)
-          }
-          continue;
+      if (cells.h[current] < 20) {
+        if (cells.h[current + next] >= 20) {
+          // УБЕРИ ДИФФУЗИЮ ОТСЮДА - она делает болото
+          cells.prec[current + next] += Math.max(humidity / rand(10, 20), 1);
+        } else {
+          humidity = Math.min(humidity + 5 * modifier, maxPrec);
+          cells.prec[current] += 5 * modifier;
         }
-
-        // land cell
-        const isPassable = cells.h[current + next] <= MAX_PASSABLE_ELEVATION;
-        const precipitation = isPassable ? getPrecipitation(humidity, current, next) : humidity;
-        cells.prec[current] += precipitation;
-        const evaporation = precipitation > 1.5 ? 1 : 0; // some humidity evaporates back to the atmosphere
-        humidity = isPassable ? minmax(humidity - precipitation + evaporation, 0, maxPrec) : 0;
+        continue;
       }
+
+      // land cell
+      const isPassable = cells.h[current + next] <= MAX_PASSABLE_ELEVATION;
+      const precipitation = isPassable ? getPrecipitation(humidity, current, next) : humidity;
+      cells.prec[current] += precipitation;
+      
+      // ДОБАВЬ ДИФФУЗИЮ ТОЛЬКО ДЛЯ СУШИ, и только немного
+      const neighbors = cells.c[current];
+      const lateralSpread = precipitation * 0.05; // всего 5% расползается в стороны
+      neighbors.forEach(n => {
+        // проверяем что это суша, не слишком высоко, и не слишком холодно
+        if (cells.h[n] >= 20 && cells.h[n] < 70 && cells.temp[n] >= -5) {
+          cells.prec[n] += lateralSpread / neighbors.length;
+        }
+      });
+      
+      const evaporation = precipitation > 1.5 ? 1 : 0;
+      humidity = isPassable ? minmax(humidity - precipitation + evaporation, 0, maxPrec) : 0;
     }
   }
+}
 
   function getPrecipitation(humidity, i, n) {
     const normalLoss = Math.max(humidity / (10 * modifier), 1); // precipitation in normal conditions
